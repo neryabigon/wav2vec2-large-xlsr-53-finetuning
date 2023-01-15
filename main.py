@@ -13,9 +13,10 @@ import re
 import json
 from torch.utils.tensorboard import SummaryWriter
 import pyarabic.araby as araby
+from unidecode import unidecode
 
 # the writer is responsible for tensorboard logging
-writer = SummaryWriter(comment="_turkish_augmented")
+writer = SummaryWriter(comment="_arabic_clean_new")
 
 print("----------------- Checking if cuda is available... -----------------")
 print(f'Cuda Available = {torch.cuda.is_available()}\n\n')
@@ -39,10 +40,10 @@ features = Features(
 
 # To prepare the csv:
 # add column 'audio' with absolut path to the audio files (Excel function: =CONCAT('path/to/audio_files/folder' B2))
-train_from_csv = load_dataset('csv', data_files={'train': '20p20g20b100clean.csv', },
-                              data_dir='/home/or/Desktop/turkish')
+train_from_csv = load_dataset('csv', data_files={'train': 'train.csv', },
+                              data_dir='/home/or/Desktop/portu_dataset/augmentations')
 validation_from_csv = load_dataset('csv', data_files={'validation': 'dev.csv', },
-                                   data_dir='/home/or/Desktop/turkish')
+                                   data_dir='/home/or/Desktop/portu_dataset/augmentations')
 
 train_from_csv = train_from_csv.cast(features)
 validation_from_csv = validation_from_csv.cast(features)
@@ -58,13 +59,12 @@ validation = validation_from_csv['validation']
 train['audio']
 validation['audio']
 print("----------------- Loading Datasets complete. -----------------\n\n")
-
 # ----------------------------------- Removing special characters -----------------------------------#
 # CHARS_TO_IGNORE = [",", "?", "¿", ".", "!", "¡", ";", "；", ":", '""', "%", '"', "�", "ʿ", "·", "჻", "~", "՞",
 #                    "؟", "،", "।", "॥", "«", "»", "„", "“", "”", "「", "」", "‘", "’", "《", "》", "(", ")", "[", "]",
 #                    "{", "}", "=", "`", "_", "+", "<", ">", "…", "–", "°", "´", "ʾ", "‹", "›", "©", "®", "—", "→", "。",
 #                    "、", "﹂", "﹁", "‧", "～", "﹏", "，", "｛", "｝", "（", "）", "［", "］", "【", "】", "‥", "〽",
-#                    "『", "』", "〝", "〟", "⟨", "⟩", "〜", "：", "！", "？", "♪", "؛", "/", "\\", "º", "−", "^", "'", "ʻ", "ˆ"]
+#                    "『", "』", "〝", "〟", "⟨", "⟩", "〜", "：", "！", "？", "♪", "؛", "/", "\\", "º", "−", "^", "'", "ʻ", "ˆ", "-", '☭']
 #
 #
 #
@@ -75,7 +75,8 @@ chars_to_ignore_regex = '[\,\?\.\!\-\;\:\"\“\%\‘\”\�]'
 
 def remove_special_characters(batch):
     batch["sentence"] = re.sub(chars_to_ignore_regex, '', batch["sentence"]).lower() + " "
-    batch["sentence"] = araby.strip_diacritics(batch["sentence"])  # remove pronunciation signs in arabic
+    # batch["sentence"] = araby.strip_diacritics(batch["sentence"])  # remove pronunciation signs in arabic
+    batch["sentence"] = unidecode(batch["sentence"])  # remove pronunciation signs in portuguese
     return batch
 
 
@@ -118,12 +119,12 @@ print(f'Vocab_len: {len(vocab_dict)}')
 print("----------------- Preparing vocab complete. -----------------\n\n")
 
 print("----------------- Saving vocab to jason... -----------------")
-with open('vocab_turkish_aug.json', 'w') as vocab_file:
+with open('vocab_portu.json', 'w') as vocab_file:
     json.dump(vocab_dict, vocab_file)
 
 print("----------------- Saving vocab to jason complete. -----------------\n\n")
 
-tokenizer = Wav2Vec2CTCTokenizer("./vocab_turkish_aug.json", unk_token="[UNK]", pad_token="[PAD]",
+tokenizer = Wav2Vec2CTCTokenizer("./vocab_portu.json", unk_token="[UNK]", pad_token="[PAD]",
                                  word_delimiter_token="|")
 
 feature_extractor = Wav2Vec2FeatureExtractor(feature_size=1, sampling_rate=16000, padding_value=0.0, do_normalize=True,
@@ -158,20 +159,20 @@ def prepare_dataset(batch):
 
 
 print("----------------- Preparing datasets... -----------------")
-train = train.map(prepare_dataset, remove_columns=train.column_names, num_proc=1)  # maybe we'll have to reduce to 1
-validation = validation.map(prepare_dataset, remove_columns=validation.column_names, num_proc=1)
+train = train.map(prepare_dataset, remove_columns=train.column_names, num_proc=4)  # maybe we'll have to reduce to 1
+validation = validation.map(prepare_dataset, remove_columns=validation.column_names, num_proc=4)
 print("\n\n----------------- Preparing datasets complete. -----------------\n\n")
 
 print("----------------- saving datasets... -----------------")
-train.save_to_disk('/home/or/Desktop/turkish/current/train_augmented')
-validation.save_to_disk('/home/or/Desktop/turkish/current/validation')
+train.save_to_disk('/home/or/Desktop/portu/current/train_clean')
+validation.save_to_disk('/home/or/Desktop/portu/current/validation')
 print("----------------- saving datasets complete. -----------\n\n")
 
 
 #  Loading from file
 # print("----------------- Loading Datasets... -----------------")
-# train = load_from_disk('/home/or/Desktop/turkish/current/train_augmented')
-# validation = load_from_disk('/home/or/Desktop/turkish/current/validation')
+# train = load_from_disk('/home/or/Desktop/portu/current/train_clean')
+# validation = load_from_disk('/home/or/Desktop/portu/current/validation')
 # print("----------------- Loading Datasets complete. ----------\n\n")
 @dataclass
 class DataCollatorCTCWithPadding:
@@ -282,19 +283,19 @@ model.freeze_feature_encoder()
 model.gradient_checkpointing_enable()
 
 training_args = TrainingArguments(
-    output_dir="turkish_augmented",
+    output_dir="portu_clean_new",
     group_by_length=True,
-    per_device_train_batch_size=4,  # if cuda is out of memory try decreasing batch size by half (to 8)
+    per_device_train_batch_size=16,  # if cuda is out of memory try decreasing batch size by half (to 8)
     gradient_accumulation_steps=2,
     evaluation_strategy="steps",
     num_train_epochs=10,
     fp16=True,
-    save_steps=5173,  # change to num_of_samples / batch size to save on epoch
+    save_steps=561,  # change to num_of_samples / batch size to save on epoch
     eval_steps=100,
     logging_steps=10,
     learning_rate=3e-4,
     warmup_steps=500,
-    save_total_limit=6,
+    save_total_limit=10,
     # dataloader_num_workers=5,   #  this creates multi processes loading data, but it's not recommended with cuda
     report_to='tensorboard'
 )
